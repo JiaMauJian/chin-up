@@ -57,6 +57,9 @@ STATUS_TEXT = {
     "starting": "啟動中…",
 }
 
+# 右鍵選單裡可以選的提醒間隔（分鐘）
+SIT_CHOICES = [10, 15, 20, 30, 45, 60]
+
 # 久坐提醒時輪流顯示的運動：(名稱, 做法)
 EXERCISES = [
     ("收下巴", "坐直看前方，下巴往後平推（像做出雙下巴），頭不低也不抬。停 5 秒，做 10 次。"),
@@ -126,6 +129,15 @@ class App:
                 pystray.MenuItem(lambda _: f"狀態：{STATUS_TEXT[self.state]}", None, enabled=False),
                 pystray.MenuItem(lambda _: f"已連續坐 {self._sit_minutes()} 分鐘", None, enabled=False),
                 pystray.Menu.SEPARATOR,
+                pystray.MenuItem(
+                    lambda _: f"提醒間隔：{self.config['sit_minutes']} 分鐘",
+                    pystray.Menu(
+                        *(
+                            self._interval_item(m)
+                            for m in sorted({*SIT_CHOICES, self.config["sit_minutes"]})
+                        )
+                    ),
+                ),
                 pystray.MenuItem("重新校正坐姿", self._on_calibrate, enabled=lambda _: self.state != "timer"),
                 pystray.MenuItem("重設久坐計時", self._on_reset_sit),
                 pystray.MenuItem("暫停", self._on_toggle_pause, checked=lambda _: self.paused),
@@ -172,6 +184,20 @@ class App:
         return int((time.monotonic() - self.sit_start) // 60)
 
     # ---- 選單 ----
+
+    def _interval_item(self, minutes: int) -> pystray.MenuItem:
+        def choose(icon, item):
+            self.config["sit_minutes"] = minutes
+            save_config(self.config)
+            log.info("sit_minutes -> %d", minutes)
+            icon.update_menu()
+
+        return pystray.MenuItem(
+            f"{minutes} 分鐘",
+            choose,
+            checked=lambda _: self.config["sit_minutes"] == minutes,
+            radio=True,
+        )
 
     def _on_calibrate(self, icon, item) -> None:
         self.calibrate_requested.set()
