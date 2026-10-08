@@ -26,10 +26,7 @@ DEFAULTS = {
     "idle_reset_minutes": 5,  # 離開電腦超過這麼久，久坐計時歸零
 }
 
-COLORS = {
-    "running": (40, 110, 200),
-    "paused": (120, 120, 120),
-}
+ICON_COLOR = (40, 110, 200)
 
 # 右鍵選單裡可以選的提醒間隔（分鐘）
 SIT_CHOICES = [10, 15, 20, 30, 45, 60]
@@ -90,12 +87,11 @@ class App:
         self.config = load_config()
         self.popups = Popups()
         self.stop = threading.Event()
-        self.paused = False
         self.sit_start = time.monotonic()
         self.next_exercise = random.randrange(len(EXERCISES))
         self.icon = pystray.Icon(
             "chin-up",
-            make_icon(COLORS["running"]),
+            make_icon(ICON_COLOR),
             "chin-up",
             menu=pystray.Menu(
                 pystray.MenuItem(lambda _: f"已連續坐 {self._sit_minutes()} 分鐘", None, enabled=False),
@@ -109,8 +105,6 @@ class App:
                         )
                     ),
                 ),
-                pystray.MenuItem("重設久坐計時", self._on_reset_sit),
-                pystray.MenuItem("暫停", self._on_toggle_pause, checked=lambda _: self.paused),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("結束", self._on_quit),
             ),
@@ -159,17 +153,6 @@ class App:
             radio=True,
         )
 
-    def _on_reset_sit(self, icon, item) -> None:
-        self.sit_start = time.monotonic()
-        icon.update_menu()
-
-    def _on_toggle_pause(self, icon, item) -> None:
-        self.paused = not self.paused
-        self.sit_start = time.monotonic()
-        icon.icon = make_icon(COLORS["paused" if self.paused else "running"])
-        icon.title = "chin-up（已暫停）" if self.paused else "chin-up"
-        icon.update_menu()
-
     def _on_quit(self, icon, item) -> None:
         self.stop.set()
         icon.stop()
@@ -179,7 +162,7 @@ class App:
 
     def _sit_loop(self) -> None:
         while not self.stop.wait(15):
-            if self.paused or idle_seconds() >= self.config["idle_reset_minutes"] * 60:
+            if idle_seconds() >= self.config["idle_reset_minutes"] * 60:
                 self.sit_start = time.monotonic()
             elif time.monotonic() - self.sit_start >= self.config["sit_minutes"] * 60:
                 name, how = EXERCISES[self.next_exercise]
