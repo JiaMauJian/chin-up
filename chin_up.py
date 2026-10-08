@@ -41,6 +41,11 @@ EXERCISES = [
     ("斜方肌伸展", "右手抓住椅子邊，頭往左側傾，左手輕輕把頭往左帶。停 20 秒，換邊。"),
 ]
 
+# 有示範影片的運動，提醒視窗會多一個「看示範影片」
+VIDEOS = {
+    "收下巴": "https://www.youtube.com/watch?v=oazYZ4qIjUI",
+}
+
 logging.basicConfig(
     filename=HERE / "chin-up.log",
     level=logging.INFO,
@@ -130,9 +135,9 @@ class App:
 
         return wrapper
 
-    def notify(self, message: str, title: str = "chin-up") -> None:
+    def notify(self, message: str, title: str = "chin-up", link: str | None = None) -> None:
         log.info("notify: %s", message)
-        self.popups.show(message, title)
+        self.popups.show(message, title, link)
 
     def _sit_minutes(self) -> int:
         return int((time.monotonic() - self.sit_start) // 60)
@@ -170,6 +175,7 @@ class App:
                 self.notify(
                     f"已經坐了 {self.config['sit_minutes']} 分鐘，起來動一動。\n\n{name}：{how}",
                     "該起來動一動了",
+                    VIDEOS.get(name),
                 )
                 self.sit_start = time.monotonic()
             self.icon.update_menu()

@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 import queue
 import tkinter as tk
+import webbrowser
 from ctypes import wintypes
 
 BG = "#1f2328"
@@ -33,9 +34,9 @@ class Popups:
         self.window: tk.Toplevel | None = None
         self.hide_job: str | None = None
 
-    def show(self, message: str, title: str) -> None:
-        """可以從任何執行緒呼叫。"""
-        self.queue.put(("show", title, message))
+    def show(self, message: str, title: str, link: str | None = None) -> None:
+        """可以從任何執行緒呼叫。link 有值時多一個「看示範影片」可以點。"""
+        self.queue.put(("show", title, message, link))
 
     def quit(self) -> None:
         self.queue.put(("quit",))
@@ -56,7 +57,7 @@ class Popups:
             self._open(*cmd[1:])
         self.root.after(200, self._poll)
 
-    def _open(self, title: str, message: str) -> None:
+    def _open(self, title: str, message: str, link: str | None) -> None:
         self._close()
         win = tk.Toplevel(self.root, bg=BG, highlightthickness=2, highlightbackground=ACCENT)
         win.overrideredirect(True)
@@ -66,6 +67,11 @@ class Popups:
                  anchor="w").pack(fill="x", padx=18, pady=(16, 4))
         tk.Label(win, text=message, bg=BG, fg=FG, font=("Microsoft JhengHei UI", 13),
                  justify="left", anchor="w", wraplength=400).pack(fill="x", padx=18, pady=(0, 8))
+        link_label = None
+        if link:
+            link_label = tk.Label(win, text="▶ 看示範影片", bg=BG, fg=ACCENT, cursor="hand2",
+                                  font=("Microsoft JhengHei UI", 12, "underline"), anchor="w")
+            link_label.pack(fill="x", padx=18, pady=(0, 8))
         tk.Label(win, text="點一下關閉", bg=BG, fg="#8b949e", font=("Microsoft JhengHei UI", 9),
                  anchor="e").pack(fill="x", padx=18, pady=(0, 12))
 
@@ -76,6 +82,8 @@ class Popups:
 
         for widget in (win, *win.winfo_children()):
             widget.bind("<Button-1>", lambda _: self._close())
+        if link_label is not None:
+            link_label.bind("<Button-1>", lambda _: (webbrowser.open(link), self._close()))
         self.window = win
         self.hide_job = self.root.after(SHOW_SECONDS * 1000, self._close)
 
