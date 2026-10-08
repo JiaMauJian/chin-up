@@ -116,7 +116,7 @@ class App:
         # tkinter 要在主執行緒，系統匣圖示改在背景跑
         self.icon.run_detached()
         self.icon.visible = True
-        self.notify("已在背景執行，右鍵點右下角的箭頭圖示可以設定。", "chin-up 已啟動")
+        self.notify("已在背景執行。", "chin-up 已啟動")
         threading.Thread(target=self._guard(self._sit_loop), daemon=True).start()
         self.popups.mainloop()
 
