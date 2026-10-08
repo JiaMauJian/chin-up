@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 import json
 import logging
+import random
 import threading
 import time
 from collections import deque
@@ -55,6 +56,16 @@ STATUS_TEXT = {
     "timer": "僅久坐提醒（沒有鏡頭）",
     "starting": "啟動中…",
 }
+
+# 久坐提醒時輪流顯示的運動：(名稱, 做法)
+EXERCISES = [
+    ("收下巴", "坐直看前方，下巴往後平推（像做出雙下巴），頭不低也不抬。停 5 秒，做 10 次。"),
+    ("擴胸夾背", "雙手往兩側打開，肩胛骨往中間、往下夾。停 5 秒，做 10 次。"),
+    ("門框伸展", "前臂貼著門框兩側、手肘與肩同高，身體往前傾到胸口有拉緊感。停 30 秒，做 2 次。"),
+    ("靠牆天使", "背靠牆，後腦、上背、屁股貼牆，雙手成 W 貼牆，慢慢往上滑成 Y 再滑回。做 10 次。"),
+    ("胸椎伸展", "坐著雙手抱頭，上背抵住椅背上緣往後仰。停 3 秒，做 10 次。"),
+    ("斜方肌伸展", "右手抓住椅子邊，頭往左側傾，左手輕輕把頭往左帶。停 20 秒，換邊。"),
+]
 
 logging.basicConfig(
     filename=HERE / "chin-up.log",
@@ -106,6 +117,7 @@ class App:
         self.calibrate_requested = threading.Event()
         self.state = "starting"
         self.sit_start = time.monotonic()
+        self.next_exercise = random.randrange(len(EXERCISES))
         self.icon = pystray.Icon(
             "chin-up",
             make_icon(COLORS["away"]),
@@ -185,9 +197,10 @@ class App:
             if self.paused or idle_seconds() >= self.config["idle_reset_minutes"] * 60:
                 self.sit_start = time.monotonic()
             elif time.monotonic() - self.sit_start >= self.config["sit_minutes"] * 60:
+                name, how = EXERCISES[self.next_exercise]
+                self.next_exercise = (self.next_exercise + 1) % len(EXERCISES)
                 self.notify(
-                    f"已經坐了 {self.config['sit_minutes']} 分鐘。"
-                    "起來走走，順便做幾下收下巴：下巴往後平推、停 5 秒、重複 10 次。",
+                    f"已經坐了 {self.config['sit_minutes']} 分鐘，起來動一動。\n\n{name}：{how}",
                     "該起來動一動了",
                 )
                 self.sit_start = time.monotonic()
