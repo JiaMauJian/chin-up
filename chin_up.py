@@ -1,7 +1,6 @@
-"""chin-up：常駐系統匣的坐姿提醒小工具。
+"""chin-up：常駐系統匣的久坐提醒小工具。
 
-- 久坐提醒：連續使用電腦一段時間就提醒你起來動一動（離開電腦會自動重新計時）
-- 姿勢偵測：有 webcam 時，偵測到烏龜頸或駝背持續一陣子就提醒你
+連續使用電腦一段時間就提醒你起來動一動（離開電腦會自動重新計時）。
 """
 
 from __future__ import annotations
@@ -12,15 +11,12 @@ import logging
 import random
 import threading
 import time
-from collections import deque
-from dataclasses import asdict
 from pathlib import Path
 
 import pystray
 from PIL import Image, ImageDraw
 
 from popup import Popups
-from posture import Baseline, Camera, Sample, assess, median
 
 HERE = Path(__file__).resolve().parent
 CONFIG_PATH = HERE / "config.json"
@@ -28,33 +24,11 @@ CONFIG_PATH = HERE / "config.json"
 DEFAULTS = {
     "sit_minutes": 15,  # 連續坐多久提醒一次
     "idle_reset_minutes": 5,  # 離開電腦超過這麼久，久坐計時歸零
-    "use_camera": True,
-    "camera_index": 0,
-    "check_interval_seconds": 2,  # 多久看一次姿勢
-    "bad_posture_seconds": 10,  # 姿勢不良持續多久才提醒
-    "posture_cooldown_seconds": 60,  # 兩次姿勢提醒的最短間隔
-    "size_tolerance": 0.15,  # 臉框比校正時大多少算頭往前（0.15 = 15%）
-    "y_tolerance": 0.06,  # 臉比校正時低多少算駝背（畫面高度的比例）
-    "pitch_tolerance": 0.07,  # 臉的上下比例比校正時扁多少算低頭（0.07 = 7%）
-    "debug": False,  # true 時每次偵測的數值都寫進 chin-up.log
-    "baseline": None,
 }
 
 COLORS = {
-    "good": (46, 160, 67),
-    "bad": (230, 120, 20),
-    "away": (120, 120, 120),
+    "running": (40, 110, 200),
     "paused": (120, 120, 120),
-    "timer": (40, 110, 200),  # 沒有鏡頭，只做久坐提醒
-}
-
-STATUS_TEXT = {
-    "good": "姿勢良好",
-    "bad": "姿勢不良",
-    "away": "沒看到人",
-    "paused": "已暫停",
-    "timer": "僅久坐提醒（沒有鏡頭）",
-    "starting": "啟動中…",
 }
 
 # 右鍵選單裡可以選的提醒間隔（分鐘）
@@ -117,16 +91,13 @@ class App:
         self.popups = Popups()
         self.stop = threading.Event()
         self.paused = False
-        self.calibrate_requested = threading.Event()
-        self.state = "starting"
         self.sit_start = time.monotonic()
         self.next_exercise = random.randrange(len(EXERCISES))
         self.icon = pystray.Icon(
             "chin-up",
-            make_icon(COLORS["away"]),
+            make_icon(COLORS["running"]),
             "chin-up",
             menu=pystray.Menu(
-                pystray.MenuItem(lambda _: f"狀態：{STATUS_TEXT[self.state]}", None, enabled=False),
                 pystray.MenuItem(lambda _: f"已連續坐 {self._sit_minutes()} 分鐘", None, enabled=False),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
@@ -138,7 +109,6 @@ class App:
                         )
                     ),
                 ),
-                pystray.MenuItem("重新校正坐姿", self._on_calibrate, enabled=lambda _: self.state != "timer"),
                 pystray.MenuItem("重設久坐計時", self._on_reset_sit),
                 pystray.MenuItem("暫停", self._on_toggle_pause, checked=lambda _: self.paused),
                 pystray.Menu.SEPARATOR,
@@ -154,7 +124,6 @@ class App:
         self.icon.visible = True
         self.notify("已在背景執行，右鍵點右下角的箭頭圖示可以設定。", "chin-up 已啟動")
         threading.Thread(target=self._guard(self._sit_loop), daemon=True).start()
-        threading.Thread(target=self._guard(self._posture_loop), daemon=True).start()
         self.popups.mainloop()
 
     def _guard(self, fn):
@@ -170,15 +139,6 @@ class App:
     def notify(self, message: str, title: str = "chin-up") -> None:
         log.info("notify: %s", message)
         self.popups.show(message, title)
-
-    def set_state(self, state: str) -> None:
-        if state == self.state:
-            return
-        log.info("state: %s -> %s", self.state, state)
-        self.state = state
-        self.icon.icon = make_icon(COLORS.get(state, COLORS["away"]))
-        self.icon.title = f"chin-up：{STATUS_TEXT[state]}"
-        self.icon.update_menu()
 
     def _sit_minutes(self) -> int:
         return int((time.monotonic() - self.sit_start) // 60)
@@ -199,9 +159,6 @@ class App:
             radio=True,
         )
 
-    def _on_calibrate(self, icon, item) -> None:
-        self.calibrate_requested.set()
-
     def _on_reset_sit(self, icon, item) -> None:
         self.sit_start = time.monotonic()
         icon.update_menu()
@@ -209,6 +166,8 @@ class App:
     def _on_toggle_pause(self, icon, item) -> None:
         self.paused = not self.paused
         self.sit_start = time.monotonic()
+        icon.icon = make_icon(COLORS["paused" if self.paused else "running"])
+        icon.title = "chin-up（已暫停）" if self.paused else "chin-up"
         icon.update_menu()
 
     def _on_quit(self, icon, item) -> None:
@@ -231,106 +190,6 @@ class App:
                 )
                 self.sit_start = time.monotonic()
             self.icon.update_menu()
-
-    # ---- 姿勢偵測 ----
-
-    def _posture_loop(self) -> None:
-        cfg = self.config
-        if not cfg["use_camera"]:
-            self.set_state("timer")
-            return
-
-        camera = Camera(cfg["camera_index"])
-        if not camera.open():
-            log.info("no camera, timer-only mode")
-            self.set_state("timer")
-            return
-
-        try:
-            baseline = Baseline(**cfg["baseline"])
-        except TypeError:  # 還沒校正過，或是舊版的校正資料
-            baseline = None
-        if baseline is None:
-            self.calibrate_requested.set()
-
-        recent: deque[Sample] = deque(maxlen=5)
-        bad_since: float | None = None
-        last_alert = 0.0
-
-        try:
-            while not self.stop.is_set():
-                if self.paused:
-                    camera.close()  # 暫停時關掉鏡頭
-                    self.set_state("paused")
-                    self.stop.wait(1)
-                    continue
-                if camera.cap is None and not camera.open():
-                    self.set_state("timer")
-                    self.stop.wait(30)
-                    continue
-
-                if self.calibrate_requested.is_set():
-                    self.calibrate_requested.clear()
-                    baseline = self._calibrate(camera) or baseline
-                    recent.clear()
-                    bad_since = None
-                    if baseline is None:
-                        self.stop.wait(10)
-                        self.calibrate_requested.set()
-                        continue
-
-                sample = camera.sample()
-                if sample is None:
-                    recent.clear()
-                    bad_since = None
-                    self.set_state("away")
-                else:
-                    recent.append(sample)
-                    smoothed = median(list(recent))
-                    problem = assess(
-                        smoothed, baseline, cfg["size_tolerance"], cfg["y_tolerance"], cfg["pitch_tolerance"]
-                    )
-                    if cfg["debug"]:
-                        log.info(
-                            "size %+.0f%% (tol %.0f%%), y %+.3f (tol %.3f), pitch %+.0f%% (tol -%.0f%%) -> %s",
-                            (smoothed.size / baseline.size - 1) * 100,
-                            cfg["size_tolerance"] * 100,
-                            smoothed.y - baseline.y,
-                            cfg["y_tolerance"],
-                            (smoothed.pitch / baseline.pitch - 1) * 100,
-                            cfg["pitch_tolerance"] * 100,
-                            problem or "ok",
-                        )
-                    now = time.monotonic()
-                    if problem is None:
-                        bad_since = None
-                        self.set_state("good")
-                    else:
-                        bad_since = bad_since or now
-                        self.set_state("bad")
-                        if (
-                            now - bad_since >= cfg["bad_posture_seconds"]
-                            and now - last_alert >= cfg["posture_cooldown_seconds"]
-                        ):
-                            self.notify(problem, "注意坐姿")
-                            last_alert = now
-
-                self.stop.wait(cfg["check_interval_seconds"])
-        finally:
-            camera.close()
-
-    def _calibrate(self, camera: Camera) -> Baseline | None:
-        self.notify("請坐正、看著螢幕，3 秒後開始校正。", "校正坐姿")
-        self.stop.wait(3)
-        baseline = camera.calibrate(seconds=3)
-        if baseline is None:
-            self.notify("沒看清楚你的臉，10 秒後再試一次。", "校正失敗")
-            return None
-        self.config["baseline"] = asdict(baseline)
-        save_config(self.config)
-        log.info("calibrated: %s", baseline)
-        self.notify("校正完成，之後姿勢跑掉會提醒你。", "校正完成")
-        return baseline
 
 
 def already_running() -> bool:
