@@ -34,7 +34,7 @@ SIT_CHOICES = [10, 15, 20, 30, 45, 60]
 # 久坐提醒時輪流顯示的運動：(名稱, 做法)
 EXERCISES = [
     ("收下巴", "坐直、肩胛骨往中間夾，兩根手指把下巴往後推成雙下巴，頭不低也不抬。停 5 秒，做 10 次。"),
-    ("收下巴後仰", "坐直、肩胛骨往中間夾，先收成雙下巴，再把頭慢慢往後仰到看天花板。停 1–2 秒回正，做 10 次。"),
+    ("收下巴後仰", "坐直、肩胛骨往中間夾，先收成雙下巴，再把頭慢慢往後仰到看天花板。停 2 秒回正，做 10 次。"),
     ("後仰左右轉", "坐直、肩胛骨往中間夾，收成雙下巴後頭往後仰，再慢慢往左、往右轉一點點，越慢越好。左右各 5 次。"),
 ]
 
@@ -43,6 +43,13 @@ VIDEOS = {
     "收下巴": "https://www.youtube.com/watch?v=-CaDuNgjKKo",
     "收下巴後仰": "https://www.youtube.com/watch?v=-CaDuNgjKKo",
     "後仰左右轉": "https://www.youtube.com/watch?v=-CaDuNgjKKo",
+}
+
+# 有計時的運動：(次數, [(動作, 秒數), ...])，提醒視窗會多一個「開始計時」
+ROUTINES = {
+    "收下巴": (10, [("收下巴", 5), ("休息", 5)]),
+    "收下巴後仰": (10, [("收下巴後仰", 3), ("停住", 2), ("回正休息", 3)]),
+    "後仰左右轉": (5, [("收下巴後仰", 3), ("慢慢往左轉", 4), ("慢慢往右轉", 4), ("回正休息", 3)]),
 }
 
 logging.basicConfig(
@@ -134,9 +141,9 @@ class App:
 
         return wrapper
 
-    def notify(self, message: str, title: str = "chin-up", link: str | None = None) -> None:
+    def notify(self, message: str, title: str = "chin-up", link: str | None = None, routine=None) -> None:
         log.info("notify: %s", message)
-        self.popups.show(message, title, link)
+        self.popups.show(message, title, link, routine)
 
     def _sit_minutes(self) -> int:
         return int((time.monotonic() - self.sit_start) // 60)
@@ -175,6 +182,7 @@ class App:
                     f"已經坐了 {self.config['sit_minutes']} 分鐘，起來動一動。\n\n{name}：{how}",
                     "該起來動一動了",
                     VIDEOS.get(name),
+                    ROUTINES.get(name),
                 )
                 self.sit_start = time.monotonic()
             self.icon.update_menu()
