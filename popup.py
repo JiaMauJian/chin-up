@@ -10,7 +10,6 @@ import ctypes
 import queue
 import tkinter as tk
 import webbrowser
-import winsound
 from ctypes import wintypes
 
 BG = "#1f2328"
@@ -133,7 +132,6 @@ class Popups:
         def tick(i: int, left: int) -> None:
             if left == 0:
                 i += 1
-                winsound.MessageBeep()  # 換動作時叫一聲，不用一直盯著螢幕
                 if i == len(steps):
                     count.config(text="")
                     timer.config(text="完成！")
